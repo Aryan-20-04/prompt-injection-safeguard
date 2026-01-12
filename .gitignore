@@ -1,0 +1,19 @@
+# Model checkpoints / weights
+*.bin
+*.pt
+*.safetensors
+prompt_injection_model_data/
+
+# Logs
+logs/
+runs/
+
+# Python
+__pycache__/
+*.pyc
+
+# Colab
+.ipynb_checkpoints/
+
+# OS
+.DS_Store
