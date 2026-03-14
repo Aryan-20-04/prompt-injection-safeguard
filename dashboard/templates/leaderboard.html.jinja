@@ -1,0 +1,53 @@
+{# dashboard/templates/leaderboard.html.jinja #}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>PromptGuard Bench — Leaderboard</title>
+  <style>
+    body { font-family: system-ui; max-width: 1100px; margin: 0 auto; padding: 2rem; }
+    table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    th { background: #1A56DB; color: white; padding: 10px 12px; text-align: left; }
+    td { padding: 8px 12px; border-bottom: 1px solid #e5e7eb; }
+    tr:hover { background: #f9fafb; }
+    .rank-1 { font-weight: bold; color: #D97706; }
+    .charts-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-top: 2rem; }
+    .chart-card { border: 1px solid #e5e7eb; border-radius: 8px; padding: 1rem; }
+  </style>
+</head>
+<body>
+  <h1>PromptGuard Benchmark Leaderboard</h1>
+  <p>Generated: {{ generated_at }} &bull; Git: <code>{{ git_commit }}</code></p>
+
+  <table id="lb">
+    <thead>
+      <tr>
+        <th>Rank</th><th>Model</th><th>Dataset</th>
+        <th>Micro-F1 ↓</th><th>Macro-F1</th><th>Precision</th><th>Recall</th><th>P50 (ms)</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for i, row in rows %}
+      <tr>
+        <td class="{{ 'rank-1' if i == 1 else '' }}">{{ i }}</td>
+        <td><a href="model_{{ row.model }}.html">{{ row.model }}</a></td>
+        <td>{{ row.dataset }}</td>
+        <td><strong>{{ "%.4f"|format(row.micro_f1) }}</strong></td>
+        <td>{{ "%.4f"|format(row.macro_f1) }}</td>
+        <td>{{ "%.4f"|format(row.precision) }}</td>
+        <td>{{ "%.4f"|format(row.recall) }}</td>
+        <td>{{ "%.1f"|format(row.latency_p50) }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+
+  <div class="charts-grid">
+    {% for model_name, chart_path in radar_charts %}
+    <div class="chart-card">
+      <img src="{{ chart_path }}" style="width:100%">
+    </div>
+    {% endfor %}
+  </div>
+</body>
+</html>

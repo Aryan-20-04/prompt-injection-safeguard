@@ -1,0 +1,44 @@
+# .github/workflows/release_audit.yml
+# Triggered manually or on release tags.
+# Runs two independent benchmark executions and compares them.
+
+name: Reproducibility audit
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v4
+        with: { python-version: "3.11" }
+
+      - name: Install
+        run: pip install -e ".[dev]"
+
+      - name: Run A
+        run: |
+          python -m bench.run \
+            --config configs/quick_smoke_test.yaml \
+            --output results/audit_A
+      - name: Run B  # identical config, independent execution
+        run: |
+          python -m bench.run \
+            --config configs/quick_smoke_test.yaml \
+            --output results/audit_B
+
+      - name: Compare
+        run: |
+          python scripts/compare_runs.py results/audit_A results/audit_B
+          # Exit code 1 fails the workflow if runs diverge
+
+      - name: Upload artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v3
+        with:
+          name: divergent-runs
+          path: results/

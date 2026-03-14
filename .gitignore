@@ -3,6 +3,7 @@
 *.pt
 *.safetensors
 prompt_injection_model_data/
+prompt_injection_model/
 
 # Logs
 logs/

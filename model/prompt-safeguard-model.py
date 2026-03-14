@@ -2,21 +2,23 @@
 # Train Prompt Injection Detector from Hugging Face Dataset
 # =====================================================
 
-import torch
-import numpy as np
-from datasets import load_dataset
-from sklearn.preprocessing import MultiLabelBinarizer
-from sklearn.metrics import classification_report, f1_score
 import warnings
+
+import numpy as np
+import torch
+from datasets import load_dataset
+from sklearn.metrics import classification_report, f1_score
+from sklearn.preprocessing import MultiLabelBinarizer
+
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print("Using device:", device)
 
 
 from transformers import (
-    AutoTokenizer,
     AutoModelForSequenceClassification,
+    AutoTokenizer,
     Trainer,
-    TrainingArguments
+    TrainingArguments,
 )
 
 # =====================================================
@@ -31,13 +33,7 @@ BATCH_SIZE = 32
 EPOCHS = 3
 LR = 2e-5
 
-LABELS = [
-    "BENIGN",
-    "JAILBREAK",
-    "INSTRUCTION_OVERRIDE",
-    "ROLE_HIJACK",
-    "DATA_EXFILTRATION"
-]
+LABELS = ["BENIGN", "JAILBREAK", "INSTRUCTION_OVERRIDE", "ROLE_HIJACK", "DATA_EXFILTRATION"]
 
 # =====================================================
 # STEP 1: LOAD DATASET FROM HUGGING FACE
@@ -77,6 +73,7 @@ print("\nEncoding labels...")
 sample_labels = train_ds["labels"][0]
 print(f"Sample label format: {sample_labels} (type: {type(sample_labels)})")
 
+
 # Handle different label formats
 def normalize_labels(labels):
     """Ensure labels are in list format"""
@@ -86,6 +83,7 @@ def normalize_labels(labels):
         return labels
     else:
         return [str(labels)]
+
 
 # Normalize labels in datasets
 train_labels = [normalize_labels(label) for label in train_ds["labels"]]
@@ -107,9 +105,7 @@ train_ds = train_ds.remove_columns(["labels"]).add_column(
     "labels", y_train.astype("float32").tolist()
 )
 
-val_ds = val_ds.remove_columns(["labels"]).add_column(
-    "labels", y_val.astype("float32").tolist()
-)
+val_ds = val_ds.remove_columns(["labels"]).add_column("labels", y_val.astype("float32").tolist())
 
 # =====================================================
 # STEP 3: TOKENIZER & MODEL
@@ -119,34 +115,24 @@ print("\nLoading tokenizer and model...")
 tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
 
 model = AutoModelForSequenceClassification.from_pretrained(
-    MODEL_NAME,
-    num_labels=len(LABELS),
-    problem_type="multi_label_classification"
+    MODEL_NAME, num_labels=len(LABELS), problem_type="multi_label_classification"
 ).to(device)
+
 
 # =====================================================
 # STEP 4: TOKENIZATION
 # =====================================================
 def tokenize(batch):
-    return tokenizer(
-        batch["text"],
-        truncation=True,
-        padding="max_length",
-        max_length=MAX_LEN
-    )
+    return tokenizer(batch["text"], truncation=True, padding="max_length", max_length=MAX_LEN)
+
 
 print("\nTokenizing datasets...")
 train_ds = train_ds.map(tokenize, batched=True, desc="Tokenizing train")
 val_ds = val_ds.map(tokenize, batched=True, desc="Tokenizing validation")
 
-train_ds.set_format(
-    "torch",
-    columns=["input_ids", "attention_mask", "labels"]
-)
-val_ds.set_format(
-    "torch",
-    columns=["input_ids", "attention_mask", "labels"]
-)
+train_ds.set_format("torch", columns=["input_ids", "attention_mask", "labels"])
+val_ds.set_format("torch", columns=["input_ids", "attention_mask", "labels"])
+
 
 # =====================================================
 # STEP 5: METRICS (MULTI-LABEL) - FIXED
@@ -154,34 +140,35 @@ val_ds.set_format(
 def compute_metrics(eval_pred):
     """Compute multi-label classification metrics"""
     logits, labels = eval_pred
-    
+
     # Convert to numpy if needed
     if isinstance(logits, torch.Tensor):
         logits = logits.cpu().numpy()
     if isinstance(labels, torch.Tensor):
         labels = labels.cpu().numpy()
-    
+
     # Apply sigmoid and threshold
     probs = 1 / (1 + np.exp(-logits))  # sigmoid
     preds = (probs > 0.5).astype(int)
-    
+
     # Compute metrics
-    micro_f1 = f1_score(labels, preds, average='micro', zero_division=0)
-    macro_f1 = f1_score(labels, preds, average='macro', zero_division=0)
-    
+    micro_f1 = f1_score(labels, preds, average="micro", zero_division=0)
+    macro_f1 = f1_score(labels, preds, average="macro", zero_division=0)
+
     # Per-class F1
     per_class_f1 = f1_score(labels, preds, average=None, zero_division=0)
-    
+
     metrics = {
         "micro_f1": float(micro_f1),
         "macro_f1": float(macro_f1),
     }
-    
+
     # Add per-class metrics
     for i, label in enumerate(LABELS):
         metrics[f"f1_{label}"] = float(per_class_f1[i])
-    
+
     return metrics
+
 
 # =====================================================
 # STEP 6: TRAINING ARGUMENTS
@@ -205,7 +192,7 @@ try:
         greater_is_better=True,
         save_total_limit=2,
         report_to="none",
-        seed=42
+        seed=42,
     )
 except TypeError:
     # Fall back to older version parameter name
@@ -238,7 +225,7 @@ trainer = Trainer(
     train_dataset=train_ds,
     eval_dataset=val_ds,
     tokenizer=tokenizer,
-    compute_metrics=compute_metrics
+    compute_metrics=compute_metrics,
 )
 
 # =====================================================
@@ -267,14 +254,7 @@ probs = 1 / (1 + np.exp(-logits))  # sigmoid
 pred_labels = (probs > 0.5).astype(int)
 
 print("\nClassification Report:")
-print(
-    classification_report(
-        true_labels,
-        pred_labels,
-        target_names=LABELS,
-        zero_division=0
-    )
-)
+print(classification_report(true_labels, pred_labels, target_names=LABELS, zero_division=0))
 
 # =====================================================
 # STEP 10: SAVE MODEL
