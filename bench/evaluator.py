@@ -1,7 +1,7 @@
 import numpy as np
 from sklearn.metrics import (f1_score, precision_score, recall_score,
                               confusion_matrix)
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Dict, List
 
 @dataclass
@@ -18,7 +18,8 @@ class EvalResult:
     global_metrics: MetricSet
     per_attack_metrics: Dict[str, MetricSet]
     latency_p50_ms: float; latency_p95_ms: float; latency_p99_ms: float
-    
+    label_schema: List[str] = field(default_factory=list)  # ← add this
+   
 class Evaluator:
     def evaluate(self, dataset, predictions, model_meta) -> EvalResult:
         schema  = dataset.label_schema

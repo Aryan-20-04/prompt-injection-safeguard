@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.backends.legacy:build"
+
+[project]
+name = "prompt-injection-bench"
+version = "0.1.0"
+requires-python = ">=3.10"
+dependencies = [
+    "torch>=2.0",
+    "transformers>=4.35",
+    "datasets>=2.14",
+    "scikit-learn>=1.3",
+    "numpy>=1.24",
+    "pyyaml>=6.0",
+    "pydantic>=2.0",
+    "tqdm>=4.65",
+]
+
+[project.optional-dependencies]
+viz = ["matplotlib>=3.7", "seaborn>=0.12", "plotly>=5.17", "jinja2>=3.1"]
+dev = ["pytest>=7.4", "black>=23.0", "isort>=5.12", "pre-commit>=3.5"]
+all = ["prompt-injection-bench[viz,dev]"]
+
+[project.scripts]
+bench = "bench.runner:cli_entry"

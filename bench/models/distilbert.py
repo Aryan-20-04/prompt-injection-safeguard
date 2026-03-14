@@ -3,7 +3,9 @@ import numpy as np
 import torch
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
 from .base import ModelPlugin, ModelOutput, ModelMetadata
+from .registry import register
 
+@register("distilbert-injection-detector")
 class DistilBERTInjectionDetector(ModelPlugin):
 
     def load(self, config: dict) -> None:

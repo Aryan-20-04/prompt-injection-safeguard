@@ -1,4 +1,5 @@
 # bench/leaderboard.py
+from importlib.resources import path
 import json, csv, os
 from pathlib import Path
 from dataclasses import dataclass
@@ -48,3 +49,23 @@ class LeaderboardGenerator:
             )
         Path(output_dir).mkdir(parents=True, exist_ok=True)
         (Path(output_dir)/"leaderboard.md").write_text("\n".join(lines))
+    def _write_csv(self, rows, output_dir):
+        import csv
+        path = Path(output_dir) / "leaderboard.csv"
+        with open(path, "w", newline="") as f:
+            w = csv.writer(f)
+            w.writerow(["rank","model","dataset","micro_f1","macro_f1",
+                    "precision","recall","latency_p50","latency_p95","run_date"])
+            for i, r in enumerate(rows, 1):
+                w.writerow([i, r.model, r.dataset, f"{r.micro_f1:.6f}",
+                        f"{r.macro_f1:.6f}", f"{r.precision:.6f}", f"{r.recall:.6f}",
+                        f"{r.latency_p50:.2f}", f"{r.latency_p95:.2f}", r.run_date])
+
+        def _write_html(self, rows, output_dir):
+            from jinja2 import Environment, FileSystemLoader
+            env = Environment(loader=FileSystemLoader("dashboard/templates"))
+            tmpl = env.get_template("leaderboard.html.jinja")
+            html = tmpl.render(rows=list(enumerate(rows, 1)),
+                       generated_at=rows[0].run_date if rows else "",
+                       git_commit="", radar_charts=[])
+            (Path(output_dir) / "leaderboard.html").write_text(html)

@@ -17,7 +17,15 @@ def capture_snapshot(config: dict, seed: int = 42) -> dict:
         "config_hash": hashlib.sha256(json.dumps(config, sort_keys=True)
                                       .encode()).hexdigest()[:12],
     }
-
+def _is_dirty() -> bool:
+    try:
+        out = subprocess.check_output(
+            ["git", "status", "--porcelain"], stderr=subprocess.DEVNULL
+        ).decode().strip()
+        return len(out) > 0
+    except Exception:
+        return False  # not in a git repo
+    
 def _set_seeds(seed: int):
     import random, numpy as np, torch
     random.seed(seed); np.random.seed(seed); torch.manual_seed(seed)
