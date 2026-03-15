@@ -1,7 +1,7 @@
 run:
-  output_dir: runs/test_run
+  output_dir: runs/
   device: auto
-  batch_size: 16
+  batch_size: 32
   parallel_workers: 2
   seed: 42
 suite: prompt_injection

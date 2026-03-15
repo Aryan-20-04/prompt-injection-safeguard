@@ -3,7 +3,7 @@ import json
 import yaml
 from pathlib import Path
 from tqdm import tqdm
-
+import torch
 from models.discovery import discover_models
 from data.hf_loader import HuggingFaceLoader
 from evaluation.evaluator import Evaluator
@@ -37,15 +37,11 @@ class BenchmarkRunner:
         snapshot = capture_snapshot(config, seed=seed)
 
         # device selection
-        device = config["run"].get("device", "cpu")
+        device = config["run"].get("device", "auto")
 
         if device == "auto":
-            import torch
-
             if torch.cuda.is_available():
                 device = "cuda"
-            elif torch.backends.mps.is_available():
-                device = "mps"
             else:
                 device = "cpu"
 
