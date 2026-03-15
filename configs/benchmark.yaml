@@ -1,101 +1,47 @@
 # =============================================================================
-#  Prompt Injection Benchmark — Reference Config
-# =============================================================================
+#  Prompt Injection Benchmark — Full Config
 #
-#  Run:
-#    python scripts/run_benchmark.py --config configs/benchmark.yaml
-#
-#  Or with multi-label evaluation:
-#    python scripts/run_benchmark.py --config configs/benchmark.yaml \
-#           --eval-mode multi_label
+#  Split into two runs to avoid OOM on T4:
+#    Encoders:  python scripts/run_benchmark.py --config configs/benchmark.yaml
+#    LLMs:      python scripts/run_benchmark.py --config configs/llm_run.yaml
 # =============================================================================
 
 run:
-  output_dir: runs/baseline_run     # all artefacts written here
-  device: auto                       # auto | cpu | cuda | mps
+  output_dir: runs/encoders_run
+  device: auto
   batch_size: 32
-  parallel_workers: 1                # >1 enables threaded inference (best for API models)
   seed: 42
-  eval_mode: binary                  # binary | multi_label
+  eval_mode: binary
 
-# ---------------------------------------------------------------------------
-# Dataset suite
-# Use one of:
-#   suite: prompt_injection          — single dataset (fast)
-#   suite: prompt_injection_full     — all 4 research datasets
-#   suite: smoke                     — 50-sample CI smoke test
-#
-# Or inline datasets:
-# ---------------------------------------------------------------------------
 suite: prompt_injection
 
-# Override / add individual datasets (takes effect when 'suite' is absent):
-# datasets:
-#   - hf_name: Smooth-3/llm-prompt-injection-attacks
-#     split: validation
-#     text_field: text
-#     label_field: labels
-#     max_samples: 500
-#     # Optional: remap raw dataset labels to canonical benchmark labels
-#     # label_map:
-#     #   "0": BENIGN
-#     #   "1": JAILBREAK
-
-# ---------------------------------------------------------------------------
-# Canonical label set
-# ---------------------------------------------------------------------------
 labels:
   - BENIGN
   - JAILBREAK
-  # Multi-label attack taxonomy (enable with eval_mode: multi_label):
-  # - INSTRUCTION_OVERRIDE
-  # - ROLE_HIJACK
-  # - DATA_EXFILTRATION
-  # - PROMPT_LEAKAGE
 
-# ---------------------------------------------------------------------------
-# Models to evaluate
-# ---------------------------------------------------------------------------
 models:
 
-  # ── Encoder models ───────────────────────────────────────────────────────
-  - id: distilbert
-    model_name: distilbert-base-uncased
-    max_len: 512
-
-  - id: roberta
-    model_name: roberta-base
-    max_len: 512
-
-  - id: deberta
-    model_name: microsoft/deberta-v3-base
-    max_len: 512
-
-  - id: bert
-    model_name: bert-base-uncased
-    max_len: 512
-
-  # ── Guard models ─────────────────────────────────────────────────────────
+  # ── Guard models (purpose-built, best performers) ────────────────────
   - id: kiwi_guard
     model_name: protectai/deberta-v3-base-prompt-injection
     max_len: 512
 
-  # ── LLMs (generative) ────────────────────────────────────────────────────
-  - id: qwen
-    model_name: Qwen/Qwen2-1.5B-Instruct
+  - id: laiyer_guard
+    model_name: laiyer/deberta-v3-base-prompt-injection-v1
+    max_len: 512
 
-  - id: llama
-    model_name: meta-llama/Meta-Llama-3-8B-Instruct
+  # ── Fine-tuned encoders ──────────────────────────────────────────────
+  - id: distilbert_finetuned
+    model_name: fmops/distilbert-prompt-injection
+    max_len: 512
 
-  - id: mistral
-    model_name: mistralai/Mistral-7B-Instruct-v0.3
+  - id: roberta_injection
+    model_name: deepset/deberta-v3-base-injection
+    max_len: 512
 
-  # ── API models ───────────────────────────────────────────────────────────
-  # api_key is optional here — set OPENAI_API_KEY / ANTHROPIC_API_KEY in env
-  - id: openai_guard
-    model_name: gpt-4o-mini
-    # api_key: sk-...   # not recommended — use env var instead
-
-  - id: anthropic_guard
-    model_name: claude-haiku-4-5
-    # api_key: sk-ant-...
+  # ── API models (uncomment after setting env vars) ────────────────────
+  # Set OPENAI_API_KEY / ANTHROPIC_API_KEY before enabling these
+  # - id: openai_guard
+  #   model_name: gpt-4o-mini
+  # - id: anthropic_guard
+  #   model_name: claude-haiku-4-5

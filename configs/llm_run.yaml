@@ -1,0 +1,42 @@
+# =============================================================================
+#  LLM Benchmark Run
+#
+#  Run this AFTER the encoder run and after clearing GPU memory:
+#    import torch, gc
+#    torch.cuda.empty_cache()
+#    gc.collect()
+#
+#  For Gemma: set HF_TOKEN env var first (gated model)
+#    import os
+#    os.environ["HF_TOKEN"] = "hf_..."
+# =============================================================================
+
+run:
+  output_dir: runs/llm_run
+  device: auto
+  batch_size: 1          # batch_size 1 is critical for LLMs on T4
+  seed: 42
+  eval_mode: binary
+
+suite: prompt_injection
+
+labels:
+  - BENIGN
+  - JAILBREAK
+
+models:
+
+  # ── Small LLMs — all fit on T4 (15GB) without quantization ──────────
+
+  # Qwen2 1.5B — smallest, fastest LLM option (~3GB VRAM)
+  - id: qwen
+    model_name: Qwen/Qwen2-1.5B-Instruct
+
+  # Phi-3 mini — 3.8B, Microsoft's efficient small model (~8GB VRAM)
+  - id: phi3
+    model_name: microsoft/Phi-3-mini-4k-instruct
+
+  # Gemma-2 2B — Google's compact instruct model (~5GB VRAM)
+  # Requires HF_TOKEN (gated model — accept license at huggingface.co/google/gemma-2-2b-it)
+  - id: gemma
+    model_name: google/gemma-2-2b-it

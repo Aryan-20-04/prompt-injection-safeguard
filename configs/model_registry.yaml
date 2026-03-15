@@ -3,61 +3,87 @@
 #
 #  Central catalogue of all registered models.
 #  The 'id' must match a @register("<id>") decorator in models/adapters/.
-#  Values here serve as defaults — overridden by benchmark.yaml per-model block.
 # =============================================================================
 
 models:
 
-  # ── Encoder models ───────────────────────────────────────────────────────
+  # ── Guard models (purpose-built for prompt injection) ────────────────
+  - id: kiwi_guard
+    model_name: protectai/deberta-v3-base-prompt-injection
+    type: guard
+    description: ProtectAI DeBERTa-v3 purpose-built prompt injection detector
+
+  - id: laiyer_guard
+    model_name: laiyer/deberta-v3-base-prompt-injection-v1
+    type: guard
+    description: Laiyer DeBERTa-v3 prompt injection guard
+
+  # ── Fine-tuned encoders ──────────────────────────────────────────────
+  - id: distilbert_finetuned
+    model_name: fmops/distilbert-prompt-injection
+    type: encoder
+    description: DistilBERT fine-tuned for prompt injection detection
+
+  - id: roberta_injection
+    model_name: deepset/deberta-v3-base-injection
+    type: encoder
+    description: deepset DeBERTa fine-tuned for injection detection
+
+  # ── Base encoders (use fine-tuned versions above for real benchmarks) ─
   - id: distilbert
     model_name: distilbert-base-uncased
     type: encoder
-    description: DistilBERT fine-tuned for sequence classification
+    description: DistilBERT base (not fine-tuned — for baseline comparison only)
 
   - id: roberta
     model_name: roberta-base
     type: encoder
-    description: RoBERTa base for sequence classification
+    description: RoBERTa base (not fine-tuned — for baseline comparison only)
 
   - id: deberta
     model_name: microsoft/deberta-v3-base
     type: encoder
-    description: DeBERTa-v3 base for sequence classification
+    description: DeBERTa-v3 base (not fine-tuned — for baseline comparison only)
 
   - id: bert
     model_name: bert-base-uncased
     type: encoder
-    description: BERT base uncased for sequence classification
+    description: BERT base (not fine-tuned — for baseline comparison only)
 
-  # ── Guard models ─────────────────────────────────────────────────────────
-  - id: kiwi_guard
-    model_name: protectai/deberta-v3-base-prompt-injection
-    type: guard
-    description: ProtectAI purpose-built prompt injection detector
-
-  # ── LLMs ─────────────────────────────────────────────────────────────────
+  # ── Small LLMs ────────────────────────────────────────────────────────
   - id: qwen
     model_name: Qwen/Qwen2-1.5B-Instruct
     type: llm
-    description: Qwen2 1.5B instruction-tuned
+    description: Qwen2 1.5B instruction-tuned — smallest LLM option
 
+  - id: phi3
+    model_name: microsoft/Phi-3-mini-4k-instruct
+    type: llm
+    description: Microsoft Phi-3 mini 3.8B instruct
+
+  - id: gemma
+    model_name: google/gemma-2-2b-it
+    type: llm
+    description: Google Gemma-2 2B instruct (gated — requires HF_TOKEN)
+
+  # ── Larger LLMs (7B — need 4-bit quantization on T4) ─────────────────
   - id: llama
     model_name: meta-llama/Meta-Llama-3-8B-Instruct
     type: llm
-    description: Llama 3 8B instruction-tuned
+    description: Llama 3 8B instruct (requires HF token + 4-bit quant on T4)
 
   - id: mistral
     model_name: mistralai/Mistral-7B-Instruct-v0.3
     type: llm
-    description: Mistral 7B instruction-tuned v0.3
+    description: Mistral 7B instruct v0.3 (requires 4-bit quant on T4)
 
-  # ── API models ────────────────────────────────────────────────────────────
+  # ── API models ────────────────────────────────────────────────────────
   - id: openai_guard
     model_name: gpt-4o-mini
     type: api
-    description: OpenAI GPT-4o-mini via API
+    description: OpenAI GPT-4o-mini via API (requires OPENAI_API_KEY)
 
   - id: anthropic_guard
     model_name: claude-haiku-4-5
     type: api
-    description: Anthropic Claude Haiku via API
+    description: Anthropic Claude Haiku via API (requires ANTHROPIC_API_KEY)
