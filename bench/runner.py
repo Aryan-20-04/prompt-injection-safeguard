@@ -22,7 +22,7 @@ class BenchmarkRunner:
         output_dir = output_dir or config["run"]["output_dir"]
         Path(output_dir).mkdir(parents=True, exist_ok=True)
         (Path(output_dir) / "resolved_config.yaml").write_text(
-            yaml.dump(config, default_flow_style=False)
+            yaml.safe_dump(config, sort_key=True)
         )
 
         seed = config["run"].get("seed", 42)
@@ -34,7 +34,12 @@ class BenchmarkRunner:
         device = config["run"].get("device", "cpu")
         if device == "auto":
             import torch
-            device = "cuda" if torch.cuda.is_available() else "cpu"
+            if torch.cuda.is_available():
+                device = "cuda"
+            elif torch.backends.mps.is_available():
+                device = "mps"
+            else:
+                device = "cpu"
 
         batch_size = config["run"].get("batch_size", 32)
         labels = config["labels"]
@@ -47,7 +52,7 @@ class BenchmarkRunner:
         datasets = []
         for dcfg in dataset_cfgs:
             loader = HuggingFaceLoader({
-                "hf_name": "Smooth-3/llm-prompt-injection-attacks",
+                "hf_name": dcfg["hf_name"],
                 "split": dcfg.get("split", "validation"),
                 "max_samples": dcfg.get("max_samples", None),
                 "revision": dcfg.get("revision", None),
@@ -68,86 +73,96 @@ class BenchmarkRunner:
         all_results = []
 
         for mcfg in model_cfgs:
-            model_id = mcfg["id"]
-            plugin = get_model(model_id)
-            plugin.load({
-                "labels": labels,
-                "device": device,
-                "model_name": mcfg.get("model_name", model_id),
-                "max_len": mcfg.get("max_len", 256),
-            })
+            try:
+                model_id = mcfg["id"]
+                plugin = get_model(model_id)
+                if plugin is None:
+                    raise ValueError(f"Model with id '{model_id}' not found in registry.")
+                plugin.load({
+                    "labels": labels,
+                    "device": device,
+                    "model_name": mcfg.get("model_name", model_id),
+                    "max_len": mcfg.get("max_len", 256),
+                })
 
-            for dataset in datasets:
-                predictions = self._run_inference(
-                    plugin, dataset, batch_size
-                )
+                for dataset in datasets:
+                    predictions = self._run_inference(
+                        plugin, dataset, batch_size
+                    )
 
-                raw_path = raw_dir / f"{model_id}__{dataset.name.replace('/', '_')}.jsonl"
-                with open(raw_path, "w") as f:
-                    for sample, pred in zip(dataset.samples, predictions):
-                        f.write(json.dumps({
-                            "sample_id": sample.sample_id,
-                            "text": sample.text,
-                            "ground_truth": sample.ground_truth_labels,
-                            "predicted": pred.predicted_labels,
-                            "probabilities": pred.label_probabilities,
-                            "inference_time_ms": pred.inference_time_ms,
-                        }) + "\n")
+                    raw_path = raw_dir / f"{model_id}__{dataset.name.replace('/', '_')}.jsonl"
+                    with open(raw_path, "w") as f:
+                        for sample, pred in zip(dataset.samples, predictions):
+                            f.write(json.dumps({
+                                "sample_id": sample.sample_id,
+                                "text": sample.text,
+                                "ground_truth": sample.ground_truth_labels,
+                                "predicted": pred.predicted_labels,
+                                "probabilities": (pred.label_probabilities.tolist()if hasattr(pred.label_probabilities, "tolist")else pred.label_probabilities),
+                                "inference_time_ms": pred.inference_time_ms,
+                            }) + "\n")
+  
+                    result = self.evaluator.evaluate(dataset, predictions, plugin.metadata)
+                    all_results.append(result)
+  
+                    metrics_path = metrics_dir / f"{model_id}__{dataset.name.replace('/', '_')}.json"
+                    metrics_path.write_text(json.dumps({
+                        "model_name": result.model_name,
+                        "dataset_name": result.dataset_name,
+                        "label_schema": result.label_schema,
+                        "global_metrics": {
+                            "micro_f1": result.global_metrics.micro_f1,
+                            "macro_f1": result.global_metrics.macro_f1,
+                            "precision": result.global_metrics.precision,
+                            "recall": result.global_metrics.recall,
+                            "per_class_f1": result.global_metrics.per_class_f1,
+                            "confusion_matrix": result.global_metrics.confusion_matrix,
+                            "sample_count": result.global_metrics.sample_count,
+                        },
+                        "per_attack_metrics": {
+                            atype: {
+                                "micro_f1": ms.micro_f1,
+                                "macro_f1": ms.macro_f1,
+                                "precision": ms.precision,
+                                "recall": ms.recall,
+                                "per_class_f1": ms.per_class_f1,
+                                "sample_count": ms.sample_count,
+                            }
+                            for atype, ms in result.per_attack_metrics.items()
+                        },
+                        "latency_p50_ms": result.latency_p50_ms,
+                        "latency_p95_ms": result.latency_p95_ms,
+                        "latency_p99_ms": result.latency_p99_ms,
+                    }, indent=2))
 
-                result = self.evaluator.evaluate(dataset, predictions, plugin.metadata)
-                all_results.append(result)
+                    print(
+                        f"[done] {model_id} on {dataset.name} — "
+                        f"micro_f1={result.global_metrics.micro_f1:.4f} "
+                        f"macro_f1={result.global_metrics.macro_f1:.4f} "
+                        f"p50={result.latency_p50_ms:.1f}ms"
+                    )
+            except Exception as e:
+                print(f"[error] {model_id} — {str(e)}")
 
-                metrics_path = metrics_dir / f"{model_id}__{dataset.name.replace('/', '_')}.json"
-                metrics_path.write_text(json.dumps({
-                    "model_name": result.model_name,
-                    "dataset_name": result.dataset_name,
-                    "label_schema": result.label_schema,
-                    "global_metrics": {
-                        "micro_f1": result.global_metrics.micro_f1,
-                        "macro_f1": result.global_metrics.macro_f1,
-                        "precision": result.global_metrics.precision,
-                        "recall": result.global_metrics.recall,
-                        "per_class_f1": result.global_metrics.per_class_f1,
-                        "confusion_matrix": result.global_metrics.confusion_matrix,
-                        "sample_count": result.global_metrics.sample_count,
-                    },
-                    "per_attack_metrics": {
-                        atype: {
-                            "micro_f1": ms.micro_f1,
-                            "macro_f1": ms.macro_f1,
-                            "precision": ms.precision,
-                            "recall": ms.recall,
-                            "per_class_f1": ms.per_class_f1,
-                            "sample_count": ms.sample_count,
-                        }
-                        for atype, ms in result.per_attack_metrics.items()
-                    },
-                    "latency_p50_ms": result.latency_p50_ms,
-                    "latency_p95_ms": result.latency_p95_ms,
-                    "latency_p99_ms": result.latency_p99_ms,
-                }, indent=2))
-
-                print(
-                    f"[done] {model_id} on {dataset.name} — "
-                    f"micro_f1={result.global_metrics.micro_f1:.4f} "
-                    f"macro_f1={result.global_metrics.macro_f1:.4f} "
-                    f"p50={result.latency_p50_ms:.1f}ms"
-                )
-
-        LeaderboardGenerator().generate(output_dir, output_dir)
+        LeaderboardGenerator().generate(metrics_dir, Path(output_dir) / "leaderboard")
         print(f"\nRun complete. Results written to: {output_dir}")
         return all_results
 
     def _run_inference(self, plugin, dataset, batch_size):
         predictions = []
         samples = dataset.samples
-        batches = [
-            samples[i:i + batch_size]
-            for i in range(0, len(samples), batch_size)
-        ]
-        for batch in tqdm(batches, desc=f"Inferring {plugin.metadata.name}", unit="batch"):
+        for i in range(0, len(samples), batch_size):
+            batch = samples[i:i+batch_size]
+        model_name = getattr(plugin.metadata, "name", "model")
+        for batch in tqdm(batches, desc=f"Inferring {model_name}", unit="batch"):
             texts = [s.text for s in batch]
-            predictions.extend(plugin.predict(texts))
+            batch_preds = plugin.predict(texts)
+            if len(batch_preds) != len(batch):
+                raise ValueError(
+                    f"Plugin {plugin.metadata.name} returned {len(batch_preds)} predictions "
+                    f"but expected {len(batch)} for the current batch."
+                )
+            predictions.extend(batch_preds)
         return predictions
 
 
