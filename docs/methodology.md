@@ -7,13 +7,14 @@ during a benchmark run. Models load pre-trained weights and run prediction.
 
 ## Metrics
 
-| Metric       | Formula | Notes |
-|--------------|---------|-------|
-| Micro-F1     | F1 over all samples and labels flattened | Primary ranking metric |
-| Macro-F1     | Mean F1 per class | Penalises neglect of minority attack types |
-| Precision    | TP / (TP + FP), micro-averaged | |
-| Recall       | TP / (TP + FN), micro-averaged | |
-| Latency P50  | Median per-sample inference time (ms) | Measured on CPU unless noted |
+| Metric      | Formula                                    | Notes                                      |
+|-------------|--------------------------------------------|--------------------------------------------|
+| Micro-F1    | F1 over all samples and labels flattened   | Primary ranking metric                     |
+| Macro-F1    | Mean F1 per class                          | Penalises neglect of minority attack types |
+| Precision   | TP / (TP + FP), micro-averaged             |                                            |
+| Recall      | TP / (TP + FN), micro-averaged             |                                            |
+| Latency P50 | Median per-sample inference time (ms)      | Measured on CPU unless noted               |
+
 ## Attack Type Definitions
 
 - **BENIGN**: Legitimate prompts with no adversarial intent.
