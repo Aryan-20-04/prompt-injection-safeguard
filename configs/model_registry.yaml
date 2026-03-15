@@ -1,5 +1,63 @@
+# =============================================================================
+#  Model Registry
+#
+#  Central catalogue of all registered models.
+#  The 'id' must match a @register("<id>") decorator in models/adapters/.
+#  Values here serve as defaults — overridden by benchmark.yaml per-model block.
+# =============================================================================
+
 models:
 
+  # ── Encoder models ───────────────────────────────────────────────────────
   - id: distilbert
     model_name: distilbert-base-uncased
-    type: huggingface
+    type: encoder
+    description: DistilBERT fine-tuned for sequence classification
+
+  - id: roberta
+    model_name: roberta-base
+    type: encoder
+    description: RoBERTa base for sequence classification
+
+  - id: deberta
+    model_name: microsoft/deberta-v3-base
+    type: encoder
+    description: DeBERTa-v3 base for sequence classification
+
+  - id: bert
+    model_name: bert-base-uncased
+    type: encoder
+    description: BERT base uncased for sequence classification
+
+  # ── Guard models ─────────────────────────────────────────────────────────
+  - id: kiwi_guard
+    model_name: protectai/deberta-v3-base-prompt-injection
+    type: guard
+    description: ProtectAI purpose-built prompt injection detector
+
+  # ── LLMs ─────────────────────────────────────────────────────────────────
+  - id: qwen
+    model_name: Qwen/Qwen2-1.5B-Instruct
+    type: llm
+    description: Qwen2 1.5B instruction-tuned
+
+  - id: llama
+    model_name: meta-llama/Meta-Llama-3-8B-Instruct
+    type: llm
+    description: Llama 3 8B instruction-tuned
+
+  - id: mistral
+    model_name: mistralai/Mistral-7B-Instruct-v0.3
+    type: llm
+    description: Mistral 7B instruction-tuned v0.3
+
+  # ── API models ────────────────────────────────────────────────────────────
+  - id: openai_guard
+    model_name: gpt-4o-mini
+    type: api
+    description: OpenAI GPT-4o-mini via API
+
+  - id: anthropic_guard
+    model_name: claude-haiku-4-5
+    type: api
+    description: Anthropic Claude Haiku via API

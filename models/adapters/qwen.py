@@ -1,57 +1,38 @@
 from models.model_registry import register
-from models.base_model import BaseModel, ModelMetadata
-from inference.prediction_types import Prediction
+from models.base_model import ModelMetadata
+from models.adapters.llm_base import LLMClassifierMixin
+
 
 @register("qwen")
-class QwenAdapter(BaseModel):
-
+class QwenAdapter(LLMClassifierMixin):
     metadata = ModelMetadata(
         name="Qwen",
         model_type="llm",
-        task="classification"
+        hf_id="Qwen/Qwen2-1.5B-Instruct",
     )
 
-    def load(self, config):
+    # Qwen uses a different chat template
+    SYSTEM_PROMPT = (
+        "You are a security classifier. "
+        "Reply with exactly one word: BENIGN or JAILBREAK."
+    )
+    USER_TEMPLATE = "<|im_start|>system\n{system}<|im_end|>\n<|im_start|>user\n{text}<|im_end|>\n<|im_start|>assistant\n"
 
-        from transformers import AutoModelForCausalLM, AutoTokenizer
+    def _classify_single(self, text: str) -> str:
         import torch
 
-        self.device = config["device"]
-
-        self.tokenizer = AutoTokenizer.from_pretrained(config["model_name"])
-        self.model = AutoModelForCausalLM.from_pretrained(config["model_name"]).to(self.device)
-
-    def predict(self, texts):
-
-        import torch
-
-        preds = []
-
-        for t in texts:
-
-            prompt = f"""
-Classify the prompt as BENIGN or JAILBREAK.
-
-Prompt: {t}
-
-Answer:
-"""
-
-            inputs = self.tokenizer(prompt, return_tensors="pt").to(self.device)
-
-            with torch.no_grad():
-                out = self.model.generate(**inputs, max_new_tokens=5)
-
-            resp = self.tokenizer.decode(out[0])
-
-            label = "JAILBREAK" if "JAILBREAK" in resp.upper() else "BENIGN"
-
-            preds.append(
-                Prediction(
-                    predicted_labels=[label],
-                    label_probabilities=None,
-                    inference_time_ms=None
-                )
+        prompt = self.USER_TEMPLATE.format(
+            system=self.SYSTEM_PROMPT, text=text
+        )
+        inputs = self.tokenizer(prompt, return_tensors="pt").to(self.device)
+        with torch.no_grad():
+            out = self.model.generate(
+                **inputs,
+                max_new_tokens=self.MAX_NEW_TOKENS,
+                do_sample=False,
+                pad_token_id=self.tokenizer.pad_token_id,
             )
-
-        return preds
+        generated = self.tokenizer.decode(
+            out[0][inputs["input_ids"].shape[-1]:], skip_special_tokens=True
+        ).strip().upper()
+        return self._parse_label(generated)

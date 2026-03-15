@@ -1,240 +1,247 @@
-import argparse
-import json
-import yaml
-from pathlib import Path
-from tqdm import tqdm
-import torch
-from models.discovery import discover_models
-from data.hf_loader import HuggingFaceLoader
-from evaluation.evaluator import Evaluator
-from leaderboard.generator import LeaderboardGenerator
-from models.model_registry import load_from_yaml, get as get_model
-from reproducibility.snapshot import capture_snapshot
+"""
+BenchmarkRunner — orchestrates the full evaluation pipeline.
 
+Flow
+----
+1. Load & validate config
+2. Expand suite → dataset config list
+3. Capture reproducibility snapshot
+4. Load all datasets
+5. For each model × dataset:
+   a. Load model
+   b. Run batched inference (optionally parallel)
+   c. Evaluate metrics
+   d. Write raw predictions + metrics JSON
+6. Generate leaderboard
+7. Build HTML dashboard
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+import time
+from pathlib import Path
+from typing import List
+
+import torch
+import yaml
+
+from core.config_loader import ConfigLoader
+from data.hf_loader import HuggingFaceLoader
+from data.suites import get_suite, load_suites_from_yaml
+from evaluation.evaluator import Evaluator
+from inference.engine import InferenceEngine
+from inference.prediction_types import Prediction
+from leaderboard.generator import LeaderboardGenerator
+from models.discovery import discover_models
+from models.model_registry import get as get_model, load_from_yaml
+from reproducibility.snapshot import capture_snapshot
+from results.writer import ResultsWriter
+from visualization.charts import ChartGenerator
+from visualization.dashboard import DashboardBuilder
+
+logger = logging.getLogger(__name__)
+
+# Auto-discover adapters at import time
 discover_models()
+# Merge any additional suites defined in configs/datasets.yaml
+load_suites_from_yaml()
+
 
 class BenchmarkRunner:
 
-    def __init__(self):
-        self.evaluator = Evaluator()
+    def __init__(self, eval_mode: str = "binary") -> None:
+        """
+        Parameters
+        ----------
+        eval_mode : "binary" | "multi_label"
+            Passed through to the Evaluator.
+        """
+        self.evaluator = Evaluator(mode=eval_mode)
 
-    def run_from_config_path(self, config_path: str, output_dir: str | None = None):
+    # ------------------------------------------------------------------
+    # Main entry point
+    # ------------------------------------------------------------------
 
-        with open(config_path) as f:
-            config = yaml.safe_load(f)
+    def run_from_config_path(
+        self,
+        config_path: str,
+        output_dir: str | None = None,
+    ) -> List:
+        config = ConfigLoader().load(config_path)
 
-        output_dir = output_dir or config["run"]["output_dir"]
-        output_dir = Path(output_dir)
-        output_dir.mkdir(parents=True, exist_ok=True)
+        run_output_dir = Path(output_dir or config["run"]["output_dir"])
+        run_output_dir.mkdir(parents=True, exist_ok=True)
 
-        # save resolved config
-        (output_dir / "resolved_config.yaml").write_text(
+        # Persist resolved config for reproducibility
+        (run_output_dir / "resolved_config.yaml").write_text(
             yaml.safe_dump(config, sort_keys=True)
         )
 
-        # reproducibility snapshot
+        # ── Device ──────────────────────────────────────────────────────
+        device = self._resolve_device(config["run"].get("device", "auto"))
+        batch_size = config["run"].get("batch_size", 32)
+        parallel_workers = config["run"].get("parallel_workers", 1)
         seed = config["run"].get("seed", 42)
+        labels = config["labels"]
+        eval_mode = config["run"].get("eval_mode", "binary")
+        self.evaluator = Evaluator(mode=eval_mode)
+
+        # ── Reproducibility ─────────────────────────────────────────────
         snapshot = capture_snapshot(config, seed=seed)
 
-        # device selection
-        device = config["run"].get("device", "auto")
+        # ── Model registry ───────────────────────────────────────────────
+        registry_path = Path(__file__).parent.parent / "configs" / "model_registry.yaml"
+        if registry_path.exists():
+            load_from_yaml(registry_path)
 
+        # ── Datasets ─────────────────────────────────────────────────────
+        if "suite" in config:
+            dataset_cfgs = get_suite(config["suite"])
+        else:
+            dataset_cfgs = config["datasets"]
+
+        datasets = self._load_datasets(dataset_cfgs)
+        snapshot["dataset_hashes"] = {ds.name: ds.content_hash for ds in datasets}
+
+        (run_output_dir / "run_metadata.json").write_text(
+            json.dumps(snapshot, indent=2, default=str)
+        )
+
+        # ── Inference + Evaluation ───────────────────────────────────────
+        writer = ResultsWriter(run_output_dir)
+        engine = InferenceEngine(num_workers=parallel_workers)
+        model_cfgs = config.get("models", [])
+        all_results = []
+
+        for mcfg in model_cfgs:
+            model_id = mcfg["id"]
+            try:
+                plugin = get_model(model_id)
+                plugin.load({
+                    "labels": labels,
+                    "device": device,
+                    "model_name": mcfg.get("model_name", model_id),
+                    "max_len": mcfg.get("max_len", 512),
+                    "api_key": mcfg.get("api_key"),
+                })
+
+                snapshot["model_versions"][model_id] = getattr(
+                    plugin.metadata, "version", None
+                ) or mcfg.get("model_name", model_id)
+
+                for dataset in datasets:
+                    predictions = engine.run(plugin, dataset, batch_size)
+
+                    writer.write_predictions(model_id, dataset.name, dataset, predictions)
+
+                    result = self.evaluator.evaluate(dataset, predictions, plugin.metadata)
+                    all_results.append(result)
+
+                    writer.write_metrics(model_id, dataset.name, result)
+
+                    logger.info(
+                        "[done] %s on %s | micro_f1=%.4f macro_f1=%.4f "
+                        "fpr=%.4f adr=%.4f latency_p50=%.1fms",
+                        model_id, dataset.name,
+                        result.global_metrics.micro_f1,
+                        result.global_metrics.macro_f1,
+                        result.global_metrics.false_positive_rate,
+                        result.global_metrics.attack_detection_rate,
+                        result.latency_p50_ms,
+                    )
+                    print(
+                        f"[done] {model_id} on {dataset.name} "
+                        f"micro_f1={result.global_metrics.micro_f1:.4f} "
+                        f"macro_f1={result.global_metrics.macro_f1:.4f} "
+                        f"fpr={result.global_metrics.false_positive_rate:.4f} "
+                        f"adr={result.global_metrics.attack_detection_rate:.4f}"
+                    )
+
+            except Exception as exc:
+                logger.error("[error] %s — %s", model_id, exc, exc_info=True)
+                print(f"[error] {model_id} — {exc}")
+
+        # ── Leaderboard ───────────────────────────────────────────────────
+        leaderboard_dir = run_output_dir / "leaderboard"
+        LeaderboardGenerator().generate(writer.metrics_dir, leaderboard_dir)
+
+        # ── Charts + Dashboard ────────────────────────────────────────────
+        charts_dir = run_output_dir / "charts"
+        ChartGenerator(writer.metrics_dir, charts_dir).generate_all()
+
+        dashboard_path = run_output_dir / "dashboard"
+        DashboardBuilder().build(
+            leaderboard_dir / "leaderboard.json",
+            writer.metrics_dir,
+            charts_dir,
+            dashboard_path,
+        )
+
+        # Persist updated snapshot (now includes model_versions)
+        (run_output_dir / "run_metadata.json").write_text(
+            json.dumps(snapshot, indent=2, default=str)
+        )
+
+        print(f"\nRun complete → {run_output_dir}")
+        return all_results
+
+    # ------------------------------------------------------------------
+    # Helpers
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _resolve_device(device: str) -> str:
         if device == "auto":
             if torch.cuda.is_available():
-                device = "cuda"
-            else:
-                device = "cpu"
+                return "cuda"
+            if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+                return "mps"
+            return "cpu"
+        return device
 
-        batch_size = config["run"].get("batch_size", 32)
-        labels = config["labels"]
-
-        # load model registry
-        registry_path = Path(__file__).parent.parent / "configs/model_registry.yaml"
-        load_from_yaml(registry_path)
-        from data.suites import SUITES
-        if "suite" in config:
-            dataset_cfgs = SUITES[config["suite"]]
-        else:
-            dataset_cfgs = config.get("datasets", [])
-        model_cfgs = config.get("models", [])
-
+    @staticmethod
+    def _load_datasets(dataset_cfgs: list):
         datasets = []
-
         for dcfg in dataset_cfgs:
-
             loader = HuggingFaceLoader({
                 "hf_name": dcfg["hf_name"],
                 "split": dcfg.get("split", "validation"),
                 "max_samples": dcfg.get("max_samples"),
                 "revision": dcfg.get("revision"),
                 "text_field": dcfg.get("text_field", "text"),
-                "label_field": dcfg.get("label_field", "labels"),
+                "label_field": dcfg.get("label_field", "label"),
+                "label_map": dcfg.get("label_map", {}),
             })
-
-            dataset = loader.load()
-            datasets.append(dataset)
-
-        snapshot["dataset_hashes"] = {
-            ds.name: ds.content_hash for ds in datasets
-        }
-
-        (output_dir / "run_metadata.json").write_text(
-            json.dumps(snapshot, indent=2)
-        )
-
-        metrics_dir = output_dir / "metrics"
-        raw_dir = output_dir / "raw_predictions"
-
-        metrics_dir.mkdir(exist_ok=True)
-        raw_dir.mkdir(exist_ok=True)
-
-        all_results = []
-
-        for mcfg in model_cfgs:
-
-            model_id = mcfg["id"]
-
-            try:
-
-                plugin = get_model(model_id)
-
-                if plugin is None:
-                    raise ValueError(f"Model '{model_id}' not found in registry")
-
-                plugin.load({
-                    "labels": labels,
-                    "device": device,
-                    "model_name": mcfg.get("model_name", model_id),
-                    "max_len": mcfg.get("max_len", 256),
-                })
-
-                for dataset in datasets:
-
-                    predictions = self._run_inference(
-                        plugin, dataset, batch_size
-                    )
-
-                    raw_path = raw_dir / f"{model_id}__{dataset.name.replace('/', '_')}.jsonl"
-
-                    with open(raw_path, "w") as f:
-
-                        for sample, pred in zip(dataset.samples, predictions):
-
-                            probs = pred.label_probabilities
-
-                            if hasattr(probs, "detach"):
-                                probs = probs.detach().cpu().tolist()
-                            elif hasattr(probs, "tolist"):
-                                probs = probs.tolist()
-
-                            f.write(json.dumps({
-                                "sample_id": sample.sample_id,
-                                "text": sample.text,
-                                "ground_truth": sample.ground_truth_labels,
-                                "predicted": pred.predicted_labels,
-                                "probabilities": probs,
-                                "inference_time_ms": pred.inference_time_ms,
-                            }) + "\n")
-
-                    result = self.evaluator.evaluate(
-                        dataset,
-                        predictions,
-                        plugin.metadata
-                    )
-
-                    all_results.append(result)
-
-                    metrics_path = metrics_dir / f"{model_id}__{dataset.name.replace('/', '_')}.json"
-
-                    metrics_path.write_text(json.dumps({
-                        "model_name": result.model_name,
-                        "dataset_name": result.dataset_name,
-                        "label_schema": result.label_schema,
-                        "global_metrics": result.global_metrics.to_dict(),
-                        "per_attack_metrics": {
-                            k: v.to_dict()
-                            for k, v in result.per_attack_metrics.items()
-                        },
-                        "latency_p50_ms": result.latency_p50_ms,
-                        "latency_p95_ms": result.latency_p95_ms,
-                        "latency_p99_ms": result.latency_p99_ms,
-                    }, indent=2))
-
-                    print(
-                        f"[done] {model_id} on {dataset.name} "
-                        f"micro_f1={result.global_metrics.micro_f1:.4f} "
-                        f"macro_f1={result.global_metrics.macro_f1:.4f}"
-                    )
-
-            except Exception as e:
-
-                print(f"[error] {model_id} — {e}")
-
-        LeaderboardGenerator().generate(
-            metrics_dir,
-            output_dir / "leaderboard"
-        )
-
-        print(f"\nRun complete → {output_dir}")
-
-        return all_results
+            datasets.append(loader.load())
+        return datasets
 
 
-    def _run_inference(self, plugin, dataset, batch_size):
+# ---------------------------------------------------------------------------
+# CLI
+# ---------------------------------------------------------------------------
 
-        predictions = []
-
-        samples = dataset.samples
-
-        model_name = getattr(plugin.metadata, "name", "model")
-
-        for i in tqdm(
-            range(0, len(samples), batch_size),
-            desc=f"Inferring {model_name}",
-            unit="batch"
-        ):
-
-            batch = samples[i:i + batch_size]
-
-            texts = [s.text for s in batch]
-
-            batch_preds = plugin.predict(texts)
-
-            if len(batch_preds) != len(batch):
-
-                raise ValueError(
-                    f"Plugin {plugin.metadata.name} returned "
-                    f"{len(batch_preds)} predictions for batch size {len(batch)}"
-                )
-
-            predictions.extend(batch_preds)
-
-        return predictions
-
-
-def cli_entry():
-
-    parser = argparse.ArgumentParser(
-        description="Run the prompt injection benchmark."
-    )
-
+def cli_entry() -> None:
+    import argparse
+    parser = argparse.ArgumentParser(description="Run the prompt injection benchmark.")
+    parser.add_argument("--config", required=True, help="Path to benchmark YAML config.")
+    parser.add_argument("--output", default=None, help="Override output directory.")
     parser.add_argument(
-        "--config",
-        required=True,
-        help="Path to YAML config file."
+        "--eval-mode",
+        default="binary",
+        choices=["binary", "multi_label"],
+        help="Evaluation mode (default: binary).",
     )
-
-    parser.add_argument(
-        "--output",
-        default=None,
-        help="Override output directory."
-    )
-
     args = parser.parse_args()
 
-    BenchmarkRunner().run_from_config_path(
-        args.config,
-        args.output
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(name)s — %(message)s",
+    )
+
+    BenchmarkRunner(eval_mode=args.eval_mode).run_from_config_path(
+        args.config, args.output
     )
 
 

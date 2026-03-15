@@ -3,10 +3,10 @@ from models.base_model import ModelMetadata
 from models.adapters.hf_classifier import HFClassifierMixin
 
 
-@register("roberta")
-class RoBERTaAdapter(HFClassifierMixin):
+@register("bert")
+class BERTAdapter(HFClassifierMixin):
     metadata = ModelMetadata(
-        name="RoBERTa",
+        name="BERT",
         model_type="encoder",
-        hf_id="roberta-base",
+        hf_id="bert-base-uncased",
     )

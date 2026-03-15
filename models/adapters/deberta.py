@@ -1,49 +1,12 @@
 from models.model_registry import register
-from models.base_model import BaseModel, ModelMetadata
-from inference.prediction_types import Prediction
+from models.base_model import ModelMetadata
+from models.adapters.hf_classifier import HFClassifierMixin
+
 
 @register("deberta")
-class DeBERTaAdapter(BaseModel):
-
+class DeBERTaAdapter(HFClassifierMixin):
     metadata = ModelMetadata(
-        name="DeBERTa",
-        model_type="huggingface",
-        task="classification"
+        name="DeBERTa-v3",
+        model_type="encoder",
+        hf_id="microsoft/deberta-v3-base",
     )
-
-    def load(self, config):
-
-        from transformers import AutoTokenizer, AutoModelForSequenceClassification
-        import torch
-
-        self.device = config["device"]
-
-        self.tokenizer = AutoTokenizer.from_pretrained(config["model_name"])
-        self.model = AutoModelForSequenceClassification.from_pretrained(config["model_name"]).to(self.device)
-
-    def predict(self, texts):
-
-        import torch
-
-        inputs = self.tokenizer(texts, padding=True, truncation=True, return_tensors="pt").to(self.device)
-
-        with torch.no_grad():
-            outputs = self.model(**inputs)
-
-        probs = torch.softmax(outputs.logits, dim=-1)
-
-        label_map = {0:"BENIGN",1:"JAILBREAK"}
-
-        preds = []
-
-        for p in probs:
-
-            preds.append(
-                Prediction(
-                    predicted_labels=[label_map[int(torch.argmax(p))]],
-                    label_probabilities=p,
-                    inference_time_ms=None
-                )
-            )
-
-        return preds

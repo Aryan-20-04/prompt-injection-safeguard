@@ -1,0 +1,25 @@
+{
+  "timestamp": "2025-03-15T10:22:05Z",
+  "git_commit": "a3f91bc",
+  "git_dirty": false,
+  "python": "3.11.8",
+  "torch": "2.3.0",
+  "cuda_version": "12.1",
+  "gpu": "Tesla T4",
+  "gpu_memory_gb": 15.84,
+  "cpu": "x86_64",
+  "os": "Linux-5.15.0",
+  "hostname": "colab-t4-instance",
+  "seed": 42,
+  "config_hash": "d4e7a91c3b02",
+  "dataset_hashes": {
+    "Smooth-3/llm-prompt-injection-attacks:validation": "8f3c21a09d44b17e"
+  },
+  "model_versions": {
+    "distilbert": "distilbert-base-uncased",
+    "roberta": "roberta-base",
+    "kiwi_guard": "protectai/deberta-v3-base-prompt-injection",
+    "openai_guard": "gpt-4o-mini",
+    "anthropic_guard": "claude-haiku-4-5"
+  }
+}
