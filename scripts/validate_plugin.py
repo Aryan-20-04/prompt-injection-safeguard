@@ -4,8 +4,8 @@ Usage: python scripts/validate_plugin.py --model my-model-id
 Validates that a model plugin satisfies the ModelPlugin contract.
 """
 import argparse, sys, time
-from bench.models.registry import load_from_yaml, get
-from bench.models.base import ModelOutput
+from models.model_registry import load_from_yaml, get
+from models.base_model import ModelOutput
 
 SYNTHETIC_TEXTS = [
     "Hello, can you help me write an email?",

@@ -1,5 +1,4 @@
 # Append to .gitignore:
-results/
 data/cache/
 data/custom/*.jsonl
 .venv/

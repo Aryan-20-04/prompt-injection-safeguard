@@ -1,11 +1,5 @@
-# configs/model_registry.yaml
 models:
-  - id: distilbert-injection-detector
-    class: bench.models.distilbert.DistilBERTInjectionDetector
-    description: DistilBERT fine-tuned for multi-label injection detection
-    model_card_url: https://huggingface.co/distilbert-base-uncased
 
-  - id: roberta-injection-detector
-    class: bench.models.roberta.RoBERTaInjectionDetector
-    description: RoBERTa-base for injection detection
-    model_card_url: https://huggingface.co/roberta-base
+  - id: distilbert
+    model_name: distilbert-base-uncased
+    type: huggingface

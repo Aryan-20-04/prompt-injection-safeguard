@@ -1,6 +1,0 @@
-# configs/dataset_registry.yaml
-datasets:
-  - id: smooth3-prompt-injection
-    class: bench.datasets.hf_loader.HuggingFaceLoader
-    hf_name: Smooth-3/llm-prompt-injection-attacks
-    description: Multi-label prompt

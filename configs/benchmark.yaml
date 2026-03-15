@@ -1,0 +1,21 @@
+run:
+  output_dir: runs/test_run
+  device: auto
+  batch_size: 16
+  parallel_workers: 2
+  seed: 42
+
+labels:
+  - safe
+  - injection
+
+datasets:
+  - hf_name: Smooth-3/llm-prompt-injection-attacks
+    split: validation
+    max_samples: 200
+    text_field: text
+    label_field: labels
+
+models:
+  - id: distilbert
+    model_name: distilbert-base-uncased
