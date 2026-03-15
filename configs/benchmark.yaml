@@ -4,10 +4,10 @@ run:
   batch_size: 16
   parallel_workers: 2
   seed: 42
-
+suite: prompt_injection
 labels:
-  - safe
-  - injection
+  - BENIGN
+  - JAILBREAK
 
 datasets:
   - hf_name: Smooth-3/llm-prompt-injection-attacks
@@ -18,4 +18,22 @@ datasets:
 
 models:
   - id: distilbert
-    model_name: distilbert-base-uncased
+    model_name: distilbert-base-uncased-finetuned-sst-2-english
+
+  - id: roberta
+    model_name: roberta-base
+
+  - id: deberta
+    model_name: microsoft/deberta-v3-base
+
+  - id: qwen
+    model_name: Qwen/Qwen2-1.5B-Instruct
+
+  - id: kiwi_guard
+    model_name: protectai/deberta-v3-base-prompt-injection
+
+  - id: openai_guard
+    model_name: gpt-4o-mini
+
+  - id: anthropic_guard
+    model_name: claude-3-haiku 

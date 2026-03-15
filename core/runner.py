@@ -4,13 +4,14 @@ import yaml
 from pathlib import Path
 from tqdm import tqdm
 
-import models.adapters.distilbert
+from models.discovery import discover_models
 from data.hf_loader import HuggingFaceLoader
 from evaluation.evaluator import Evaluator
 from leaderboard.generator import LeaderboardGenerator
 from models.model_registry import load_from_yaml, get as get_model
 from reproducibility.snapshot import capture_snapshot
 
+discover_models()
 
 class BenchmarkRunner:
 
@@ -54,8 +55,11 @@ class BenchmarkRunner:
         # load model registry
         registry_path = Path(__file__).parent.parent / "configs/model_registry.yaml"
         load_from_yaml(registry_path)
-
-        dataset_cfgs = config.get("datasets", [])
+        from data.suites import SUITES
+        if "suite" in config:
+            dataset_cfgs = SUITES[config["suite"]]
+        else:
+            dataset_cfgs = config.get("datasets", [])
         model_cfgs = config.get("models", [])
 
         datasets = []

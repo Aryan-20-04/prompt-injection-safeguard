@@ -1,6 +1,6 @@
 {
-  "timestamp": "2026-03-15T12:09:36Z",
-  "git_commit": "cfb6681",
+  "timestamp": "2026-03-15T14:48:19Z",
+  "git_commit": "b991542",
   "git_dirty": true,
   "python": "3.13.1 (tags/v3.13.1:0671451, Dec  3 2024, 19:06:28) [MSC v.1942 64 bit (AMD64)]",
   "torch": "2.7.1+cpu",
@@ -407,8 +407,8 @@
     "zipp==3.23.0"
   ],
   "seed": 42,
-  "config_hash": "398d6481a489",
+  "config_hash": "b369a549de11",
   "dataset_hashes": {
-    "Smooth-3/llm-prompt-injection-attacks:validation": "980fe7cfc93696d5"
+    "Smooth-3/llm-prompt-injection-attacks:validation": "b21e3fddf2afdb21"
   }
 }

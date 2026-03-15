@@ -10,3 +10,5 @@ dist/
 !.env.example
 prompt_injection_model/
 prompt_injection_model_data/
+__pycache__/
+*.pyc

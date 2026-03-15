@@ -44,13 +44,14 @@ class DistilBERTPlugin:
         predictions = []
 
         for p in probs:
+            label_map={0: "BENIGN", 1: "JAILBREAK"}
 
-            predictions.append({
+            predictions.append(
                 Prediction(
-                    predicted_labels=[str(torch.argmax(p).item())],
+                    predicted_labels=[label_map[int(torch.argmax(p).item())]],
                     label_probabilities=p,
                     inference_time_ms=None
                 )
-            })
+            )
 
         return predictions
